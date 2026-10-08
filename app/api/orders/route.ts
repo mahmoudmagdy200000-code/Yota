@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { products } from "@/lib/products";
+import { deliveryFor } from "@/lib/store";
 
 export const runtime = "nodejs";
 
@@ -21,13 +22,14 @@ export async function POST(request: Request) {
       if (!variant) return NextResponse.json({ error: "A product or price changed. Refresh the page and try again." }, { status: 400 });
       sum += variant.price * item.quantity;
     }
-    const delivery = sum >= 1500 ? 0 : 70;
+    const delivery = deliveryFor(sum);
     if (sum !== Number(subtotal) || delivery !== Number(shipping) || Number(total) !== sum + delivery) return NextResponse.json({ error: "Order total could not be verified. Refresh and try again." }, { status: 400 });
-    const response = await fetch(webhook, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ secret, orderId: `YOTA-${Date.now()}`, customer, items, subtotal: sum, shipping: delivery, total: sum + delivery, payment: "Cash on delivery", createdAt: new Date().toISOString() }), cache: "no-store", redirect: "follow" });
+    const orderId = `YOTA-${Date.now()}`;
+    const response = await fetch(webhook, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ secret, orderId, customer, items, subtotal: sum, shipping: delivery, total: sum + delivery, payment: "Cash on delivery", createdAt: new Date().toISOString() }), cache: "no-store", redirect: "follow" });
     if (!response.ok) throw new Error(`Sheets endpoint returned ${response.status}`);
     const result = await response.json().catch(() => ({}));
     if (result.ok !== true) throw new Error("Sheets endpoint rejected the order");
-    return NextResponse.json({ ok: true }, { status: 201 });
+    return NextResponse.json({ ok: true, orderId }, { status: 201 });
   } catch (error) {
     console.error("Order submission failed", error);
     return NextResponse.json({ error: "We couldn't save your order. Please try again in a moment." }, { status: 502 });
